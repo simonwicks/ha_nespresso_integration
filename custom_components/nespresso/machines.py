@@ -4,8 +4,9 @@ except ImportError:
     from .enums import MachineType, BrewType, ErrorCode, Temprature, Ingredient
 
 def get_machine_type_from_model_name(model_name):
+    if not model_name:
+        return None
     for machine_type in MachineType:
-        # Convert the enum member to string and check if it's in the model name
         if machine_type.name in model_name.upper():
             return machine_type
     return None

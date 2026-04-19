@@ -29,6 +29,8 @@ from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
+NESPRESSO_SERVICE_UUID = "06aa1940-f22a-11e3-9daa-0002a5d5c51b"
+
 
 class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for nespresso."""
@@ -42,14 +44,6 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Handle the bluetooth discovery step."""
         await self.async_set_unique_id(discovery_info.address)
         self._abort_if_unique_id_configured()
-        device = NespressoClient(mac=discovery_info.address)
-        ble_device = async_ble_device_from_address(self.hass, discovery_info.address, connectable=True)
-        if ble_device is not None:
-            await device.connect(ble_device)
-            await device.load_model()
-            await device.disconnect()
-        if not supported(discovery_info.name):
-            return self.async_abort(reason="not_supported")
         self._discovery = discovery_info
         return await self.async_step_bluetooth_confirm()
 
@@ -104,13 +98,13 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         configured_addresses = self._async_current_ids()
 
-        for info in async_discovered_service_info(self.hass):
+        for info in async_discovered_service_info(self.hass, connectable=True):
             address = info.address
             if address in configured_addresses:
                 continue
-            if supported(info.name):
-                assert info.name
-                self._discovered_devices[info.name] = info
+            if NESPRESSO_SERVICE_UUID in info.service_uuids:
+                label = info.name or address
+                self._discovered_devices[label] = info
 
         if not self._discovered_devices:
             return self.async_abort(reason="no_devices_found")
