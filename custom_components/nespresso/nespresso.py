@@ -31,6 +31,7 @@ CHAR_UUID_PAIR = '06aa3a61-f22a-11e3-9daa-0002a5d5c51b'
 CHAR_UUID_CMDRESP = '06aa3a52-f22a-11e3-9daa-0002a5d5c51b'
 CHAR_UUID_SERIAL = '06aa3a31-f22a-11e3-9daa-0002a5d5c51b'
 CHAR_UUID_BREW = '06aa3a42-f22a-11e3-9daa-0002a5d5c51b'
+CHAR_UUID_NBCAPS_VERTUO = '06aa3a52-f22a-11e3-9daa-0002a5d5c51b'
 CHAR_UUID_INFO = '06aa3a21-f22a-11e3-9daa-0002a5d5c51b'
 
 Characteristic = namedtuple('Characteristic', ['uuid', 'name', 'format'])
@@ -41,10 +42,12 @@ device_info_characteristics = [manufacturer_characteristics,
                                Characteristic(CHAR_UUID_SERIAL, 'serial', "utf-8"),
                                Characteristic(CHAR_UUID_INFO, 'device_info', "utf-8")]
 sensors_characteristics = [CHAR_UUID_STATE, CHAR_UUID_NBCAPS,
+                           CHAR_UUID_NBCAPS_VERTUO,
                            CHAR_UUID_SLIDER, CHAR_UUID_WATER_HARDNESS]
 
 sensor_decoders = {CHAR_UUID_STATE:BaseDecode(name="state", format_type='state'),
                    CHAR_UUID_NBCAPS:BaseDecode(name="caps_number", format_type='caps_number'),
+                   CHAR_UUID_NBCAPS_VERTUO:BaseDecode(name="caps_number", format_type='caps_number'),
                    CHAR_UUID_SLIDER:BaseDecode(name="slider", format_type='slider'),
                    CHAR_UUID_WATER_HARDNESS:BaseDecode(name="water_hardness", format_type='water_hardness'),
                    CHAR_UUID_INFO:BaseDecode(name="device_state", format_type="device_state")
@@ -91,16 +94,19 @@ class NespressoClient():
             for char in service.characteristics:
                 _LOGGER.debug(f'  [{service.uuid}] {char.uuid} ({",".join(char.properties)})')
 
-        # Only authenticate if we have an existing auth code — don't attempt pairing
-        # as the Vertuo line disconnects when CHAR_UUID_PAIR or CHAR_UUID_ONBOARD_STATUS are touched
-        if self.auth_code and client.services.get_characteristic(CHAR_UUID_AUTH) is not None:
+        # Authenticate — generate a code if we don't have one yet.
+        # Never write CHAR_UUID_PAIR first: the Vertuo disconnects on that write.
+        if client.services.get_characteristic(CHAR_UUID_AUTH) is not None:
+            if not self.auth_code:
+                self.auth_code = self.generate_auth_key()
+                _LOGGER.debug(f'Generated new auth key for {device.name}: {self.auth_code}')
             try:
                 await self.auth(client)
                 _LOGGER.debug(f'Auth succeeded for {device.name}')
             except Exception as e:
                 _LOGGER.warning(f'Auth write failed for {device.name}: {e} — proceeding without auth')
         else:
-            _LOGGER.debug(f'No auth code yet for {device.name} — attempting unauthenticated read')
+            _LOGGER.debug(f'No auth characteristic on {device.name} — skipping auth')
 
         self._conn = client
         return True
@@ -193,8 +199,7 @@ class NespressoClient():
                             else:
                                 self.sensordata[mac].update(sensor_data)
                     except Exception as e:
-                        _LOGGER.error("Error reading sensor data: %s", e)
-                        return None
+                        _LOGGER.warning("Error reading sensor %s: %s — skipping", characteristic, e)
             end = datetime.now()
             diff = end - now
             _LOGGER.debug(f'get_sensor_data() took {diff}')
