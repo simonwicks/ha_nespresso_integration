@@ -134,8 +134,13 @@ class NespressoClient():
                 device.hw_version = None
             device.mac_address = self._conn.address
             for characteristic in device_info_characteristics:
+                if self._conn.services.get_characteristic(characteristic.uuid) is None:
+                    _LOGGER.debug("Skipping %s — not present on device", characteristic.name)
+                    continue
                 try:
-                    data = await self._conn.read_gatt_char(characteristic.uuid)
+                    data = await asyncio.wait_for(
+                        self._conn.read_gatt_char(characteristic.uuid), timeout=5.0
+                    )
                     if characteristic.name == 'device_info':
                         dmi = decode_machine_information(data)
                         setattr(device, 'hw_version', dmi['Hardware Version'])
@@ -178,7 +183,9 @@ class NespressoClient():
             for mac, characteristics in self.sensors.items():
                 for characteristic in characteristics:
                     try:
-                        data = await self._conn.read_gatt_char(characteristic)
+                        data = await asyncio.wait_for(
+                            self._conn.read_gatt_char(characteristic), timeout=5.0
+                        )
                         if characteristic in sensor_decoders:
                             sensor_data = sensor_decoders[characteristic].decode_data(data)
                             if self.sensordata.get(mac) is None:
