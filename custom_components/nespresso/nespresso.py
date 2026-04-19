@@ -80,13 +80,12 @@ class NespressoClient():
 
         _LOGGER.debug(f'Connecting to {device.name} ({device.address})')
         client = await establish_connection(BleakClient, device, device.address)
-        _LOGGER.debug(f'Connected to {device.name}, attempting pair()')
+        _LOGGER.debug(f'Connected to {device.name}, triggering service discovery')
         try:
-            await client.pair()
-            await asyncio.sleep(2)
-        except Exception as e:
-            _LOGGER.warning(f'pair() failed for {device.name}: {e} — proceeding without pairing')
-        _LOGGER.debug(f'pair() done for {device.name}')
+            await client.get_services()
+        except AttributeError:
+            pass  # older bleak — discovery happens automatically on connect
+        _LOGGER.debug(f'Service discovery complete for {device.name}')
 
         # Try to onboard if not already — skip gracefully if characteristic not present
         if not self.isOnboard:
