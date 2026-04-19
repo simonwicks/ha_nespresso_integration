@@ -94,8 +94,16 @@ class NespressoClient():
             for char in service.characteristics:
                 _LOGGER.debug(f'  [{service.uuid}] {char.uuid} ({",".join(char.properties)})')
 
-        # Authenticate — generate a code if we don't have one yet.
-        # Never write CHAR_UUID_PAIR first: the Vertuo disconnects on that write.
+        # BLE OS-level pairing — required before any protected characteristic can be
+        # read or written. Must happen BEFORE the application-level auth write.
+        try:
+            await client.pair()
+            _LOGGER.debug(f'BLE pair() succeeded for {device.name}')
+        except Exception as e:
+            _LOGGER.warning(f'BLE pair() failed for {device.name}: {e} — may need manual pairing on device')
+
+        # Application-level auth write — generate a code if we don't have one yet.
+        # Never write CHAR_UUID_PAIR (06aa3a61): the Vertuo disconnects on that write.
         if client.services.get_characteristic(CHAR_UUID_AUTH) is not None:
             if not self.auth_code:
                 self.auth_code = self.generate_auth_key()
