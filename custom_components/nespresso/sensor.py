@@ -15,16 +15,15 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.components.sensor import PLATFORM_SCHEMA
+from homeassistant.components.sensor import PLATFORM_SCHEMA, SensorEntity
 from homeassistant.helpers import device_registry as dr
 from homeassistant.const import (ATTR_DEVICE_CLASS, ATTR_ICON, CONF_ADDRESS,
                                  CONF_NAME, CONF_RESOURCE, CONF_SCAN_INTERVAL,
                                  CONF_UNIT_SYSTEM,
                                  EVENT_HOMEASSISTANT_STOP, STATE_UNKNOWN,
                                  CONF_TOKEN)
-from homeassistant.components.binary_sensor import (PLATFORM_SCHEMA, BinarySensorEntity,
-                                                   BinarySensorDeviceClass)
-from homeassistant.helpers.entity import Entity, DeviceInfo
+from homeassistant.components.binary_sensor import BinarySensorDeviceClass
+from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.components.bluetooth import async_ble_device_from_address
 
 from .nespresso import NespressoClient
@@ -96,10 +95,15 @@ async def async_setup_entry(hass: HomeAssistant, config: ConfigEntry, async_add_
     _LOGGER.debug("Searching for Nespresso sensors...")
     try:
         Nespressodetect = NespressoClient(scan_interval, auth, mac)
-        ble_device = async_ble_device_from_address(hass, mac)
+        ble_device = async_ble_device_from_address(hass, mac, connectable=True)
+        if ble_device is None:
+            raise ConfigEntryNotReady(f"Nespresso device {mac} not found via Bluetooth")
         await Nespressodetect.connect(ble_device)
-    except UnboundLocalError:
-        raise ConfigEntryNotReady()
+    except ConfigEntryNotReady:
+        raise
+    except Exception as e:
+        raise ConfigEntryNotReady(f"Failed to connect to Nespresso device: {e}") from e
+
     try:
         _LOGGER.debug("Getting info about device(s)")
         devices_info = await Nespressodetect.get_info()
@@ -134,16 +138,16 @@ async def async_setup_entry(hass: HomeAssistant, config: ConfigEntry, async_add_
                 _LOGGER.debug("{}: {}: {}".format(mac, name, val))
                 ha_entities.append(NespressoSensor(mac, auth, name, Nespressodetect, devices_info[mac].manufacturer,
                                                    DEVICE_SENSOR_SPECIFICS[name], NespressoDeviceEntry))
-        
+
         await Nespressodetect.disconnect()
-    except:
-        _LOGGER.exception("Failed intial setup.")
+    except Exception:
+        _LOGGER.exception("Failed initial setup.")
         return
 
     async_add_entities(ha_entities, True)
-    
+
     async def brew(call):
-        """Send a command command."""
+        """Send a brew command."""
         try:
             brewType = BrewType[call.data.get('brew_type').upper()] if call.data.get('brew_type') else None
             temprature = Temprature[call.data.get('brew_temp').upper()] if call.data.get('brew_temp') else Temprature.MEDIUM
@@ -151,22 +155,25 @@ async def async_setup_entry(hass: HomeAssistant, config: ConfigEntry, async_add_
             water_ml = call.data.get('water_ml')
         except KeyError:
             brewType = None
-            _LOGGER.debug(f"Brew Failed - Recepie: {brewType}, Temp: {temprature} ")
-        
+            _LOGGER.debug(f"Brew Failed - Recipe: {brewType}, Temp: {temprature}")
+
         try:
-            ble_device = async_ble_device_from_address(hass, mac)
+            ble_device = async_ble_device_from_address(hass, mac, connectable=True)
+            if ble_device is None:
+                _LOGGER.error(f"Nespresso device {mac} not found via Bluetooth")
+                return None
             conn_status = await Nespressodetect.connect(ble_device)
             if conn_status:
                 if coffee_ml and water_ml:
-                    response =  await Nespressodetect.brew_custom(coffee_ml=coffee_ml, water_ml=water_ml, temp=temprature)
+                    response = await Nespressodetect.brew_custom(coffee_ml=coffee_ml, water_ml=water_ml, temp=temprature)
                 else:
-                    response =  await Nespressodetect.brew_predefined(brew=brewType, temp=temprature)
+                    response = await Nespressodetect.brew_predefined(brew=brewType, temp=temprature)
                 await Nespressodetect.disconnect()
                 return response
             _LOGGER.error(f"Connection failed with {ble_device.name}")
             return None
-        except:
-            _LOGGER.debug(f"Brew Failed - Recepie: {brewType}, Temp: {temprature} ")
+        except Exception:
+            _LOGGER.debug(f"Brew Failed - Recipe: {brewType}, Temp: {temprature}")
 
         return None
 
@@ -174,8 +181,11 @@ async def async_setup_entry(hass: HomeAssistant, config: ConfigEntry, async_add_
         """Update the caps counter"""
         caps = call.data.get('caps')
 
-        try: 
-            ble_device = async_ble_device_from_address(hass, mac)
+        try:
+            ble_device = async_ble_device_from_address(hass, mac, connectable=True)
+            if ble_device is None:
+                _LOGGER.error(f"Nespresso device {mac} not found via Bluetooth")
+                return None
             conn_status = await Nespressodetect.connect(ble_device)
             if conn_status:
                 if caps:
@@ -191,12 +201,14 @@ async def async_setup_entry(hass: HomeAssistant, config: ConfigEntry, async_add_
             _LOGGER.exception("Updating caps counter failed: %s", e)
 
         return None
-    
 
-    hass.services.async_register(DOMAIN, "coffee", brew)
-    hass.services.async_register(DOMAIN, "caps", caps)
-    
-class NespressoSensor(Entity):
+
+    if not hass.services.has_service(DOMAIN, "coffee"):
+        hass.services.async_register(DOMAIN, "coffee", brew)
+    if not hass.services.has_service(DOMAIN, "caps"):
+        hass.services.async_register(DOMAIN, "caps", caps)
+
+class NespressoSensor(SensorEntity):
     """General Representation of an Nespresso sensor."""
     def __init__(self, mac, auth, name, device, device_info, sensor_specifics, device_entry):
         """Initialize a sensor."""
@@ -216,7 +228,6 @@ class NespressoSensor(Entity):
         """Return the device info."""
         return DeviceInfo(
             identifiers={
-                # Serial numbers are unique identifiers within a specific domain
                 (DOMAIN, self._mac)
             },
             name=self.name
@@ -226,14 +237,14 @@ class NespressoSensor(Entity):
     def name(self):
         """Return the name of the sensor."""
         return self.friendly_name
-    
+
     @property
     def friendly_name(self):
         """Return the friendly name of the sensor"""
         return' '.join(word.capitalize() for word in self._sensor_name.split('_'))
 
     @property
-    def state(self):
+    def native_value(self):
         """Return the state of the device."""
         return self._state
 
@@ -244,11 +255,11 @@ class NespressoSensor(Entity):
 
     @property
     def device_class(self):
-        """Return the icon of the sensor."""
+        """Return the device class of the sensor."""
         return self._sensor_specifics.device_class
 
     @property
-    def unit_of_measurement(self):
+    def native_unit_of_measurement(self):
         """Return the unit the value is expressed in."""
         return self._sensor_specifics.unit
 
@@ -257,10 +268,9 @@ class NespressoSensor(Entity):
         return self._name
 
     @property
-    def device_state_attributes(self):
+    def extra_state_attributes(self):
         """Return the state attributes of the sensor."""
-        attributes = self._sensor_specifics.get_extra_attributes(self._state)
-        return attributes
+        return self._sensor_specifics.get_extra_attributes(self._state)
 
     async def async_update(self) -> None:
         """Fetch new state data for the sensor asynchronously.
@@ -270,12 +280,11 @@ class NespressoSensor(Entity):
         if self.device.data_last_updated is None or now - self.device.data_last_updated > SCAN_INTERVAL:
             async with self.device.data_update_lock:
                 if self.device.data_last_updated is None or now - self.device.data_last_updated > SCAN_INTERVAL:
-                    try:
-                        ble_device = async_ble_device_from_address(self.hass, self._mac)
-                        conn_status = await self.device.connect(ble_device)
-                    except UnboundLocalError:
-                        raise ConfigEntryNotReady()
-
+                    ble_device = async_ble_device_from_address(self.hass, self._mac, connectable=True)
+                    if ble_device is None:
+                        _LOGGER.warning("Nespresso device %s not found via Bluetooth, skipping update", self._mac)
+                        return
+                    await self.device.connect(ble_device)
                     await self.device.get_sensor_data()
                     await self.device.disconnect()
         value = self.device.sensordata[self._mac][self._sensor_name]
@@ -290,4 +299,3 @@ class NespressoSensor(Entity):
         end = datetime.now()
         _LOGGER.debug(f'async_update() took {end - now}')
         _LOGGER.debug("State {} {}".format(self._name, self._state))
-    

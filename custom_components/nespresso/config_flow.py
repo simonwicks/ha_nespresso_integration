@@ -29,47 +29,6 @@ from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
-class PlaceholderHub:
-    """Placeholder class to make tests pass.
-
-    TODO Remove this placeholder class and replace with things from your PyPI package.
-    """
-
-    def __init__(self, host: str) -> None:
-        """Initialize."""
-        self.host = host
-
-    async def authenticate(self, username: str, password: str) -> bool:
-        """Test if we can authenticate with the host."""
-        return True
-
-
-async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str, Any]:
-    """Validate the user input allows us to connect.
-
-    Data has the keys from STEP_USER_DATA_SCHEMA with values provided by the user.
-    """
-    # TODO validate the data can be used to set up a connection.
-
-    # If your PyPI package is not built with async, pass your methods
-    # to the executor:
-    # await hass.async_add_executor_job(
-    #     your_validate_func, data["username"], data["password"]
-    # )
-
-    hub = PlaceholderHub(data["host"])
-
-    if not await hub.authenticate(data["username"], data["password"]):
-        raise InvalidAuth
-
-    # If you cannot connect:
-    # throw CannotConnect
-    # If the authentication is wrong:
-    # InvalidAuth
-
-    # Return info that you want to store in the config entry.
-    return {"title": "Name of the device"}
-
 
 class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for nespresso."""
@@ -84,10 +43,11 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         await self.async_set_unique_id(discovery_info.address)
         self._abort_if_unique_id_configured()
         device = NespressoClient(mac=discovery_info.address)
-        ble_device = async_ble_device_from_address(self.hass, discovery_info.address)
-        await device.connect(ble_device)
-        await device.load_model()
-        await device.disconnect()
+        ble_device = async_ble_device_from_address(self.hass, discovery_info.address, connectable=True)
+        if ble_device is not None:
+            await device.connect(ble_device)
+            await device.load_model()
+            await device.disconnect()
         if not supported(discovery_info.name):
             return self.async_abort(reason="not_supported")
         self._discovery = discovery_info
@@ -98,12 +58,6 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     ) -> FlowResult:
         """Confirm discovery."""
         assert self._discovery is not None
-
-        # if user_input is not None:
-        #     if not isPairing(self._discovery):
-        #         return await self.async_step_wait_for_pairing_mode()
-
-        #     return self._create_snooz_entry(self._discovery)
 
         self._set_confirm_only()
         assert self._discovery.name
@@ -130,7 +84,9 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 device = NespressoClient(mac=discovered.address)
                 if user_input.get(CONF_TOKEN):
                     device.auth_code = user_input.get(CONF_TOKEN)
-                ble_device = async_ble_device_from_address(self.hass, discovered.address)
+                ble_device = async_ble_device_from_address(self.hass, discovered.address, connectable=True)
+                if ble_device is None:
+                    raise CannotConnect(f"Device {discovered.address} not found via Bluetooth")
                 await device.connect(ble_device)
                 await device.load_model()
                 await device.disconnect()
@@ -158,7 +114,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         if not self._discovered_devices:
             return self.async_abort(reason="no_devices_found")
-        
+
         data_schema=vol.Schema(
                 {
                     vol.Required(CONF_NAME): vol.In(
@@ -175,7 +131,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="user",
             data_schema=data_schema
         )
-    
+
     def _create_nespresso_entry(self, device) -> FlowResult:
         assert self._discovery.name
         return self.async_create_entry(
