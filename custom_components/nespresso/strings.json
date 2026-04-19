@@ -9,7 +9,10 @@
         }
       },
       "bluetooth_confirm": {
-        "description": "[%key:component::bluetooth::config::step::bluetooth_confirm::description%]"
+        "description": "Set up {name}. If you have an existing pairing token enter it below, otherwise leave blank to auto-pair.",
+        "data": {
+          "token": "Pairing Token (optional)"
+        }
       }
     },
     "error": {

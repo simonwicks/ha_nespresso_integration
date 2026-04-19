@@ -56,12 +56,24 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Confirm discovery."""
         assert self._discovery is not None
 
-        self._set_confirm_only()
-        assert self._discovery.name
-        placeholders = {"name": self._discovery.name}
+        if user_input is not None:
+            return self.async_create_entry(
+                title=self._discovery.name or self._discovery.address,
+                data={
+                    CONF_ADDRESS: self._discovery.address,
+                    CONF_TOKEN: user_input.get(CONF_TOKEN),
+                },
+            )
+
+        name = self._discovery.name or self._discovery.address
+        placeholders = {"name": name}
         self.context["title_placeholders"] = placeholders
         return self.async_show_form(
-            step_id="bluetooth_confirm", description_placeholders=placeholders
+            step_id="bluetooth_confirm",
+            description_placeholders=placeholders,
+            data_schema=vol.Schema({
+                vol.Optional(CONF_TOKEN): cv.string,
+            }),
         )
 
     async def async_step_user(
