@@ -61,19 +61,16 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 title=self._discovery.name or self._discovery.address,
                 data={
                     CONF_ADDRESS: self._discovery.address,
-                    CONF_TOKEN: user_input.get(CONF_TOKEN),
+                    CONF_TOKEN: None,
                 },
             )
 
         name = self._discovery.name or self._discovery.address
-        placeholders = {"name": name}
-        self.context["title_placeholders"] = placeholders
+        self._set_confirm_only()
+        self.context["title_placeholders"] = {"name": name}
         return self.async_show_form(
             step_id="bluetooth_confirm",
-            description_placeholders=placeholders,
-            data_schema=vol.Schema({
-                vol.Optional(CONF_TOKEN): cv.string,
-            }),
+            description_placeholders={"name": name},
         )
 
     async def async_step_user(

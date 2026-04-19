@@ -9,10 +9,7 @@
         }
       },
       "bluetooth_confirm": {
-        "description": "Set up {name}. If you have an existing pairing token enter it below, otherwise leave blank to auto-pair.",
-        "data": {
-          "token": "Pairing Token (optional)"
-        }
+        "description": "Do you want to set up {name}?"
       }
     },
     "error": {
