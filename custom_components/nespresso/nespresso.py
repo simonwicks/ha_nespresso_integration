@@ -122,6 +122,14 @@ class NespressoClient():
                 _LOGGER.debug(f'Auth succeeded for {device.name}')
             except Exception as e:
                 _LOGGER.warning(f'Auth write failed for {device.name}: {e} — proceeding without auth')
+                # Auth write may have caused device to disconnect; restore connection
+                if not client.is_connected:
+                    _LOGGER.debug(f'Reconnecting after auth write dropped connection for {device.name}')
+                    client = await establish_connection(BleakClient, device, device.address)
+                    try:
+                        await client.get_services()
+                    except AttributeError:
+                        pass
         else:
             _LOGGER.debug(f'No auth characteristic on {device.name} — skipping auth')
 
@@ -245,7 +253,10 @@ class NespressoClient():
             return None
 
     async def auth(self, client: BleakClient):
-        await client.write_gatt_char(CHAR_UUID_AUTH, binascii.unhexlify(self.auth_code), response=True)
+        await asyncio.wait_for(
+            client.write_gatt_char(CHAR_UUID_AUTH, binascii.unhexlify(self.auth_code), response=True),
+            timeout=5.0
+        )
 
     async def onboard(self, client: BleakClient):
         try:
