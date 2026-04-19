@@ -95,12 +95,20 @@ class NespressoClient():
                 _LOGGER.debug(f'  [{service.uuid}] {char.uuid} ({",".join(char.properties)})')
 
         # BLE OS-level pairing — required before any protected characteristic can be
-        # read or written. Must happen BEFORE the application-level auth write.
+        # read or written. After pair() the current connection isn't yet encrypted;
+        # disconnect and reconnect so the stored bond keys are used from the start.
         try:
             await client.pair()
-            _LOGGER.debug(f'BLE pair() succeeded for {device.name}')
+            _LOGGER.debug(f'BLE pair() succeeded for {device.name} — reconnecting to apply bond')
+            await client.disconnect()
+            client = await establish_connection(BleakClient, device, device.address)
+            try:
+                await client.get_services()
+            except AttributeError:
+                pass
+            _LOGGER.debug(f'Reconnected with bonding for {device.name}')
         except Exception as e:
-            _LOGGER.warning(f'BLE pair() failed for {device.name}: {e} — may need manual pairing on device')
+            _LOGGER.warning(f'BLE pair()/reconnect failed for {device.name}: {e}')
 
         # Application-level auth write — generate a code if we don't have one yet.
         # Never write CHAR_UUID_PAIR (06aa3a61): the Vertuo disconnects on that write.
