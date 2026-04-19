@@ -97,13 +97,17 @@ async def async_setup_entry(hass: HomeAssistant, config: ConfigEntry, async_add_
         Nespressodetect = NespressoClient(scan_interval, auth, mac)
         ble_device = async_ble_device_from_address(hass, mac, connectable=True)
         if ble_device is None:
+            _LOGGER.error("Device %s not found via Bluetooth — is it in range?", mac)
             raise ConfigEntryNotReady(f"Nespresso device {mac} not found via Bluetooth")
+        _LOGGER.debug("BLE device found: %s, attempting connect", ble_device.name)
         connected = await Nespressodetect.connect(ble_device)
         if not connected:
+            _LOGGER.error("connect() returned False for %s", mac)
             raise ConfigEntryNotReady(f"Failed to connect to Nespresso device {mac}")
     except ConfigEntryNotReady:
         raise
     except Exception as e:
+        _LOGGER.error("Exception during connect for %s: %s", mac, e, exc_info=True)
         raise ConfigEntryNotReady(f"Failed to connect to Nespresso device: {e}") from e
 
     try:
