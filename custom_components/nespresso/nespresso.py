@@ -94,21 +94,22 @@ class NespressoClient():
             for char in service.characteristics:
                 _LOGGER.debug(f'  [{service.uuid}] {char.uuid} ({",".join(char.properties)})')
 
-        # BLE OS-level pairing — required before any protected characteristic can be
-        # read or written. After pair() the current connection isn't yet encrypted;
-        # disconnect and reconnect so the stored bond keys are used from the start.
+        # Attempt BLE OS-level pairing. pair() invalidates BlueZ's service cache
+        # on both success and failure, so always reconnect afterwards.
+        pair_ok = False
         try:
             await client.pair()
-            _LOGGER.debug(f'BLE pair() succeeded for {device.name} — reconnecting to apply bond')
-            await client.disconnect()
-            client = await establish_connection(BleakClient, device, device.address)
-            try:
-                await client.get_services()
-            except AttributeError:
-                pass
-            _LOGGER.debug(f'Reconnected with bonding for {device.name}')
+            pair_ok = True
+            _LOGGER.debug(f'BLE pair() succeeded for {device.name}')
         except Exception as e:
-            _LOGGER.warning(f'BLE pair()/reconnect failed for {device.name}: {e}')
+            _LOGGER.warning(f'BLE pair() failed for {device.name}: {e} — reconnecting anyway')
+        await client.disconnect()
+        client = await establish_connection(BleakClient, device, device.address)
+        try:
+            await client.get_services()
+        except AttributeError:
+            pass
+        _LOGGER.debug(f'Reconnected after pair attempt for {device.name} (paired={pair_ok})')
 
         # Application-level auth write — generate a code if we don't have one yet.
         # Never write CHAR_UUID_PAIR (06aa3a61): the Vertuo disconnects on that write.
