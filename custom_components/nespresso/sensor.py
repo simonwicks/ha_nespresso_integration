@@ -123,7 +123,7 @@ async def async_setup_entry(hass: HomeAssistant, config: ConfigEntry, async_add_
             manufacturer=getattr(dev, 'manufacturer', 'Nespresso'),
             suggested_area="Kitchen",
             name=dev.name,
-            model=dev.model.name if dev.model else None,
+            model=dev.model.name if hasattr(dev.model, 'name') else dev.model,
             sw_version=dev.fw_version,
             hw_version=dev.hw_version,
             serial_number=dev.serial,

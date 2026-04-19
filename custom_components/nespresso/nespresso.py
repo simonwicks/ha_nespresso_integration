@@ -39,7 +39,6 @@ manufacturer_characteristics = Characteristic(CHAR_UUID_MANUFACTURER_NAME, 'manu
 device_info_characteristics = [manufacturer_characteristics,
                                Characteristic(CHAR_UUID_DEVICE_NAME, 'device_name', "utf-8"),
                                Characteristic(CHAR_UUID_SERIAL, 'serial', "utf-8"),
-                               Characteristic(CHAR_UUID_ONBOARD_STATUS, 'paired_status', "utf-8"),
                                Characteristic(CHAR_UUID_INFO, 'device_info', "utf-8")]
 sensors_characteristics = [CHAR_UUID_STATE, CHAR_UUID_NBCAPS,
                            CHAR_UUID_SLIDER, CHAR_UUID_WATER_HARDNESS]

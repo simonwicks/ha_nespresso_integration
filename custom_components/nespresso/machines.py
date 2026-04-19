@@ -1,7 +1,10 @@
+import logging
 try:
     from enums import MachineType, BrewType, ErrorCode, Temprature, Ingredient
 except ImportError:
     from .enums import MachineType, BrewType, ErrorCode, Temprature, Ingredient
+
+_LOGGER = logging.getLogger(__name__)
 
 def get_machine_type_from_model_name(model_name):
     if not model_name:
@@ -76,8 +79,8 @@ class CoffeeMachineFactory:
             case MachineType.PRODIGIO:
                 return ProdigoMachine(model_name, serial)
             case _:
-                print(f"No specific machine found for model {model_name}. Using default.")
-                return CoffeeMachine(model_name)
+                _LOGGER.debug("No specific machine found for model %s. Using default.", model_name)
+                return CoffeeMachine(model=None, name=model_name, serial=serial)
 
 def get_error_message(error_code):
     try:
