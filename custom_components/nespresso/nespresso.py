@@ -86,28 +86,26 @@ class NespressoClient():
         await client.pair()
         await asyncio.sleep(2)
 
-        # Try to onboard if not already
+        # Try to onboard if not already — skip gracefully if characteristic not present
         if not self.isOnboard:
             await self.get_onboard_status(client)
             if not self.isOnboard:
                 self.auth_code = self.generate_auth_key()
-                await self.onboard(client)
-                await asyncio.sleep(3)
-                await self.get_onboard_status(client)
+                try:
+                    await self.onboard(client)
+                    await asyncio.sleep(3)
+                    await self.get_onboard_status(client)
+                except Exception as e:
+                    _LOGGER.warning(f'{device.name} does not support onboarding characteristic — proceeding without it: {e}')
                 if not self.isOnboard:
-                    _LOGGER.error(f'Failed to onboard {device.name}')
-                    return False
+                    _LOGGER.warning(f'Could not confirm onboarding for {device.name} — device may use a different pairing protocol, proceeding anyway')
 
         if self.auth_code and client.is_connected:
             _LOGGER.debug(f'Nespresso auth_key: {self.auth_code}')
-            await self.auth(client)
-
-        try:
-            # Test reading protected property to verify auth
-            state = await client.read_gatt_char(CHAR_UUID_STATE, response=True)
-        except Exception as e:
-            _LOGGER.error(f'Failed to connect to Nespresso device: {device.name}')
-            return False
+            try:
+                await self.auth(client)
+            except Exception as e:
+                _LOGGER.warning(f'Auth write failed for {device.name}: {e} — proceeding without auth')
 
         self._conn = client
         return True
@@ -133,6 +131,12 @@ class NespressoClient():
         self.devices = {}
         try:
             device = await self.load_model()
+            if device is None:
+                from .machines import CoffeeMachine, MachineType
+                device = CoffeeMachine(model=None, name=self._conn.address, serial=None)
+                device.manufacturer = "Nespresso"
+                device.fw_version = None
+                device.hw_version = None
             device.mac_address = self._conn.address
             for characteristic in device_info_characteristics:
                 try:

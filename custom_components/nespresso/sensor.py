@@ -98,7 +98,9 @@ async def async_setup_entry(hass: HomeAssistant, config: ConfigEntry, async_add_
         ble_device = async_ble_device_from_address(hass, mac, connectable=True)
         if ble_device is None:
             raise ConfigEntryNotReady(f"Nespresso device {mac} not found via Bluetooth")
-        await Nespressodetect.connect(ble_device)
+        connected = await Nespressodetect.connect(ble_device)
+        if not connected:
+            raise ConfigEntryNotReady(f"Failed to connect to Nespresso device {mac}")
     except ConfigEntryNotReady:
         raise
     except Exception as e:
@@ -114,10 +116,10 @@ async def async_setup_entry(hass: HomeAssistant, config: ConfigEntry, async_add_
             config_entry_id=config.entry_id,
             connections={(dr.CONNECTION_NETWORK_MAC, mac)},
             identifiers={(DOMAIN, mac)},
-            manufacturer="Nespresso",
+            manufacturer=getattr(dev, 'manufacturer', 'Nespresso'),
             suggested_area="Kitchen",
             name=dev.name,
-            model=dev.model.name,
+            model=dev.model.name if dev.model else None,
             sw_version=dev.fw_version,
             hw_version=dev.hw_version,
             serial_number=dev.serial,
