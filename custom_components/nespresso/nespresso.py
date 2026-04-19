@@ -87,27 +87,21 @@ class NespressoClient():
             pass  # older bleak — discovery happens automatically on connect
         _LOGGER.debug(f'Service discovery complete for {device.name}')
 
-        has_onboard = client.services.get_characteristic(CHAR_UUID_ONBOARD_STATUS) is not None
-        has_auth = client.services.get_characteristic(CHAR_UUID_AUTH) is not None
-        has_pair = client.services.get_characteristic(CHAR_UUID_PAIR) is not None
-        _LOGGER.debug(f'{device.name}: onboard_char={has_onboard}, auth_char={has_auth}, pair_char={has_pair}')
+        # Log available characteristics for diagnostics
+        for service in client.services:
+            for char in service.characteristics:
+                _LOGGER.debug(f'  [{service.uuid}] {char.uuid} ({",".join(char.properties)})')
 
-        # Authenticate first — reading any protected characteristic without auth drops the connection
-        if has_auth:
-            if not self.auth_code:
-                self.auth_code = self.generate_auth_key()
-                _LOGGER.debug(f'Generated new auth key for {device.name}: {self.auth_code}')
-                # Write the pairing request if supported
-                if has_pair:
-                    try:
-                        await client.write_gatt_char(CHAR_UUID_PAIR, bytearray([1]), response=True)
-                    except Exception as e:
-                        _LOGGER.warning(f'Pair write failed for {device.name}: {e}')
+        # Only authenticate if we have an existing auth code — don't attempt pairing
+        # as the Vertuo line disconnects when CHAR_UUID_PAIR or CHAR_UUID_ONBOARD_STATUS are touched
+        if self.auth_code and client.services.get_characteristic(CHAR_UUID_AUTH) is not None:
             try:
                 await self.auth(client)
                 _LOGGER.debug(f'Auth succeeded for {device.name}')
             except Exception as e:
                 _LOGGER.warning(f'Auth write failed for {device.name}: {e} — proceeding without auth')
+        else:
+            _LOGGER.debug(f'No auth code yet for {device.name} — attempting unauthenticated read')
 
         self._conn = client
         return True
