@@ -156,11 +156,19 @@ class NespressoClient():
 
     async def get_sensors(self):
         self.sensors = {}
-        sensor_characteristics =  []
+        sensor_characteristics = []
+        _LOGGER.debug("All GATT services/characteristics on device:")
+        for service in self._conn.services:
+            for char in service.characteristics:
+                _LOGGER.debug("  [%s] %s", service.uuid, char.uuid)
         for uuid in sensors_characteristics:
             characteristic = self._conn.services.get_characteristic(uuid)
             if characteristic:
                 sensor_characteristics.append(characteristic.uuid)
+            else:
+                _LOGGER.debug("Characteristic %s not found on device", uuid)
+        if not sensor_characteristics:
+            _LOGGER.warning("No matching sensor characteristics found — device may use different UUIDs")
         self.sensors[self._conn.address] = sensor_characteristics
         return self.sensors
 

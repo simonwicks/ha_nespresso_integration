@@ -133,11 +133,17 @@ async def async_setup_entry(hass: HomeAssistant, config: ConfigEntry, async_add_
         _LOGGER.debug("Get initial sensor data to populate HA entities")
         ha_entities = []
         sensordata = await Nespressodetect.get_sensor_data()
-        for mac, data in sensordata.items():
-            for name, val in data.items():
-                _LOGGER.debug("{}: {}: {}".format(mac, name, val))
-                ha_entities.append(NespressoSensor(mac, auth, name, Nespressodetect, devices_info[mac].manufacturer,
-                                                   DEVICE_SENSOR_SPECIFICS[name], NespressoDeviceEntry))
+        if not sensordata:
+            _LOGGER.warning("No sensor data returned from device — no characteristic UUIDs matched. The device may use different GATT characteristics.")
+        else:
+            for mac, data in sensordata.items():
+                for name, val in data.items():
+                    _LOGGER.debug("{}: {}: {}".format(mac, name, val))
+                    if name not in DEVICE_SENSOR_SPECIFICS:
+                        _LOGGER.warning("Unknown sensor '%s' with value '%s' — skipping", name, val)
+                        continue
+                    ha_entities.append(NespressoSensor(mac, auth, name, Nespressodetect, devices_info[mac].manufacturer,
+                                                       DEVICE_SENSOR_SPECIFICS[name], NespressoDeviceEntry))
 
         await Nespressodetect.disconnect()
     except Exception:
