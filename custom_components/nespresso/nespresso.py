@@ -87,26 +87,34 @@ class NespressoClient():
             pass  # older bleak — discovery happens automatically on connect
         _LOGGER.debug(f'Service discovery complete for {device.name}')
 
-        # Try to onboard if not already — skip gracefully if characteristic not present
-        if not self.isOnboard:
+        has_onboard = client.services.get_characteristic(CHAR_UUID_ONBOARD_STATUS) is not None
+        has_auth = client.services.get_characteristic(CHAR_UUID_AUTH) is not None
+        _LOGGER.debug(f'{device.name}: onboard_char={has_onboard}, auth_char={has_auth}')
+
+        if has_onboard and not self.isOnboard:
             await self.get_onboard_status(client)
             if not self.isOnboard:
                 self.auth_code = self.generate_auth_key()
-                try:
-                    await self.onboard(client)
-                    await asyncio.sleep(3)
-                    await self.get_onboard_status(client)
-                except Exception as e:
-                    _LOGGER.warning(f'{device.name} does not support onboarding characteristic — proceeding without it: {e}')
+                if client.services.get_characteristic(CHAR_UUID_PAIR) is not None:
+                    try:
+                        await self.onboard(client)
+                        await asyncio.sleep(3)
+                        await self.get_onboard_status(client)
+                    except Exception as e:
+                        _LOGGER.warning(f'Onboarding failed for {device.name}: {e}')
                 if not self.isOnboard:
-                    _LOGGER.warning(f'Could not confirm onboarding for {device.name} — device may use a different pairing protocol, proceeding anyway')
+                    _LOGGER.warning(f'Could not confirm onboarding for {device.name} — proceeding anyway')
+        elif not has_onboard:
+            _LOGGER.debug(f'{device.name} has no onboarding characteristic — skipping onboarding')
 
-        if self.auth_code and client.is_connected:
+        if has_auth and self.auth_code and client.is_connected:
             _LOGGER.debug(f'Nespresso auth_key: {self.auth_code}')
             try:
                 await self.auth(client)
             except Exception as e:
                 _LOGGER.warning(f'Auth write failed for {device.name}: {e} — proceeding without auth')
+        elif not has_auth:
+            _LOGGER.debug(f'{device.name} has no auth characteristic — skipping auth')
 
         self._conn = client
         return True
