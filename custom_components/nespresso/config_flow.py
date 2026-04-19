@@ -29,7 +29,10 @@ from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
-NESPRESSO_SERVICE_UUID = "06aa1940-f22a-11e3-9daa-0002a5d5c51b"
+NESPRESSO_SERVICE_UUIDS = {
+    "06aa1940-f22a-11e3-9daa-0002a5d5c51b",  # Original line (Expert, Prodigio)
+    "06aa1910-f22a-11e3-9daa-0002a5d5c51b",  # Vertuo line (Vertuo Pop, etc.)
+}
 
 
 class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -102,7 +105,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             address = info.address
             if address in configured_addresses:
                 continue
-            if NESPRESSO_SERVICE_UUID in info.service_uuids:
+            if NESPRESSO_SERVICE_UUIDS.intersection(info.service_uuids):
                 label = info.name or address
                 self._discovered_devices[label] = info
 
