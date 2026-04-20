@@ -105,6 +105,8 @@ class NespressoClient():
         # Application-level auth write — generate a code if we don't have one yet.
         # Never write CHAR_UUID_PAIR (06aa3a61): the Vertuo disconnects on that write.
         if client.services.get_characteristic(CHAR_UUID_AUTH) is not None:
+            auth_char = client.services.get_characteristic(CHAR_UUID_AUTH)
+            _LOGGER.debug(f'Auth characteristic properties: {auth_char.properties}')
             if not self.auth_code:
                 self.auth_code = self.generate_auth_key()
                 _LOGGER.debug(f'Generated new auth key for {device.name}: {self.auth_code}')
@@ -244,8 +246,10 @@ class NespressoClient():
             return None
 
     async def auth(self, client: BleakClient):
+        # Use response=False (Write Without Response) — the auth characteristic
+        # does not send a GATT Write Response ACK; response=True hangs indefinitely.
         await asyncio.wait_for(
-            client.write_gatt_char(CHAR_UUID_AUTH, binascii.unhexlify(self.auth_code), response=True),
+            client.write_gatt_char(CHAR_UUID_AUTH, binascii.unhexlify(self.auth_code), response=False),
             timeout=5.0
         )
 
