@@ -3,25 +3,46 @@
         "abort": {
             "already_configured": "Device is already configured",
             "already_in_progress": "Configuration flow is already in progress",
-            "no_devices_found": "No devices found on the network"
+            "no_devices_found": "No Nespresso devices found"
         },
         "error": {
-            "cannot_connect": "Failed to connect",
-            "cannot_pair": "Unable to pair with device",
+            "cannot_connect": "Could not connect to the machine. Make sure it is powered on and in range.",
+            "cannot_pair": "Pairing failed. Make sure you are holding the Bluetooth button on the machine when you click Submit.",
             "invalid_auth": "Invalid authentication",
             "unknown": "Unexpected error"
         },
         "step": {
             "bluetooth_confirm": {
-                "description": "Do you want to set up {name}?"
+                "title": "Pair {name}",
+                "description": "**{name}** was found.\n\nHold the Bluetooth button on the machine until the light blinks, then click Submit to pair."
             },
             "user": {
+                "title": "Pair Nespresso",
+                "description": "Select your Nespresso machine below, then hold the Bluetooth button on the machine until it blinks and click Submit.",
                 "data": {
-                    "device": "Device",
-                    "token": "Access token"
-                },
-                "description": "Please choose your device from the list below to start the pairing process. Ensure that your device is in factory reset mode and ready to pair with a new device. Alternatively, you can enter an existing authentication key if you have one."
+                    "name": "Device"
+                }
             }
+        }
+    },
+    "options": {
+        "step": {
+            "init": {
+                "title": "Nespresso Options",
+                "description": "Optionally override the auth token, or tick Re-pair to redo Bluetooth pairing.",
+                "data": {
+                    "token": "Auth token",
+                    "repair": "Re-pair device"
+                }
+            },
+            "repair": {
+                "title": "Re-pair",
+                "description": "Hold the Bluetooth button on the machine until it blinks, then click Submit to re-pair ({address})."
+            }
+        },
+        "error": {
+            "cannot_connect": "Could not connect to the machine.",
+            "cannot_pair": "Pairing failed. Hold the Bluetooth button and try again."
         }
     }
 }
