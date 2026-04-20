@@ -89,10 +89,13 @@ class NespressoClient():
             pass  # older bleak — discovery happens automatically on connect
         _LOGGER.debug(f'Service discovery complete for {device.name}')
 
-        # Log available characteristics for diagnostics
+        # Log available characteristics with handle numbers for diagnostics
         for service in client.services:
             for char in service.characteristics:
-                _LOGGER.debug(f'  [{service.uuid}] {char.uuid} ({",".join(char.properties)})')
+                _LOGGER.debug(
+                    '  handle=0x%04X [%s] %s (%s)',
+                    char.handle, service.uuid, char.uuid, ','.join(char.properties)
+                )
 
         # BLE pairing: required for sensor reads. BlueZ reuses a stored bond
         # automatically on reconnect, so this only blocks on first-time setup.
@@ -213,7 +216,7 @@ class NespressoClient():
         _LOGGER.debug("All GATT services/characteristics on device:")
         for service in self._conn.services:
             for char in service.characteristics:
-                _LOGGER.debug("  [%s] %s", service.uuid, char.uuid)
+                _LOGGER.debug("  handle=0x%04X [%s] %s", char.handle, service.uuid, char.uuid)
         for uuid in sensors_characteristics:
             characteristic = self._conn.services.get_characteristic(uuid)
             if characteristic:
