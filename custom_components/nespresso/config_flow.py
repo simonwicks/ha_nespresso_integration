@@ -57,11 +57,15 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         assert self._discovery is not None
 
         if user_input is not None:
+            import hashlib
+            mac = self._discovery.address
+            mac_bytes = mac.replace(':', '').encode()
+            auth_code = hashlib.md5(mac_bytes).hexdigest()[:16]
             return self.async_create_entry(
                 title=self._discovery.name or self._discovery.address,
                 data={
-                    CONF_ADDRESS: self._discovery.address,
-                    CONF_TOKEN: None,
+                    CONF_ADDRESS: mac,
+                    CONF_TOKEN: auth_code,
                 },
             )
 

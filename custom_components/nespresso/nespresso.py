@@ -94,37 +94,62 @@ class NespressoClient():
             for char in service.characteristics:
                 _LOGGER.debug(f'  [{service.uuid}] {char.uuid} ({",".join(char.properties)})')
 
-        # BLE OS-level pairing is required for sensor reads to succeed on the Vertuo
-        # line, but pair() fails with AuthenticationFailed unless the user has first
-        # pressed the Bluetooth pairing button on the machine. Attempting pair()
-        # without that gesture corrupts the connection. Pairing must be done manually:
-        #   1. Hold the Bluetooth button on the machine to enter pairing mode
-        #   2. Run: bluetoothctl pair D8:13:2A:11:12:1A  (or restart HA with the machine in pairing mode)
-        # Once bonded, this code will use the stored bond on reconnect automatically.
+        # BLE pairing: required for sensor reads. BlueZ reuses a stored bond
+        # automatically on reconnect, so this only blocks on first-time setup.
+        # On first setup, press the Bluetooth button on the machine within 30s
+        # of seeing "Attempting BLE pair" in the HA log.
+        pair_ok = False
+        try:
+            _LOGGER.info(
+                "Attempting BLE pair with %s — press Bluetooth button on machine "
+                "within 30s if this is first-time setup", device.address
+            )
+            await asyncio.wait_for(client.pair(), timeout=30.0)
+            pair_ok = True
+            _LOGGER.debug("BLE pair succeeded for %s", device.address)
+        except asyncio.TimeoutError:
+            _LOGGER.warning(
+                "BLE pair timed out for %s — if sensor reads fail, restart HA and "
+                "press the Bluetooth button on the machine within 30s of startup",
+                device.address
+            )
+        except Exception as e:
+            _LOGGER.warning("BLE pair failed for %s: %s — reconnecting", device.address, e)
 
-        # Application-level auth write — generate a code if we don't have one yet.
+        # Always reconnect after pair attempt: BlueZ needs a fresh connection
+        # to use the (possibly newly established) bond.
+        await client.disconnect()
+        client = await establish_connection(BleakClient, device, device.address)
+        try:
+            await client.get_services()
+        except AttributeError:
+            pass
+        _LOGGER.debug("Reconnected after pair attempt for %s (paired=%s)", device.address, pair_ok)
+
+        # Application-level auth write. The auth characteristic uses Write Request
+        # (property='write') — the device ACKs once it accepts the code.
+        # On first-time pairing the 30s window may already be used; on subsequent
+        # connects the device recognises the stored code and ACKs immediately.
         # Never write CHAR_UUID_PAIR (06aa3a61): the Vertuo disconnects on that write.
         if client.services.get_characteristic(CHAR_UUID_AUTH) is not None:
             auth_char = client.services.get_characteristic(CHAR_UUID_AUTH)
-            _LOGGER.debug(f'Auth characteristic properties: {auth_char.properties}')
+            _LOGGER.debug("Auth characteristic properties: %s", auth_char.properties)
             if not self.auth_code:
                 self.auth_code = self.generate_auth_key()
-                _LOGGER.debug(f'Generated new auth key for {device.name}: {self.auth_code}')
+                _LOGGER.debug("Generated auth key for %s: %s", device.address, self.auth_code)
             try:
                 await self.auth(client)
-                _LOGGER.debug(f'Auth succeeded for {device.name}')
+                _LOGGER.debug("Auth succeeded for %s", device.address)
             except Exception as e:
-                _LOGGER.warning(f'Auth write failed for {device.name}: {e} — proceeding without auth')
-                # Auth write may have caused device to disconnect; restore connection
+                _LOGGER.warning("Auth write failed for %s: %s — proceeding without auth", device.address, e)
                 if not client.is_connected:
-                    _LOGGER.debug(f'Reconnecting after auth write dropped connection for {device.name}')
                     client = await establish_connection(BleakClient, device, device.address)
                     try:
                         await client.get_services()
                     except AttributeError:
                         pass
         else:
-            _LOGGER.debug(f'No auth characteristic on {device.name} — skipping auth')
+            _LOGGER.debug("No auth characteristic on %s — skipping auth", device.address)
 
         self._conn = client
         return True
@@ -246,11 +271,12 @@ class NespressoClient():
             return None
 
     async def auth(self, client: BleakClient):
-        # Use response=False (Write Without Response) — the auth characteristic
-        # does not send a GATT Write Response ACK; response=True hangs indefinitely.
+        # response=True (Write Request) matches the 'write' property on this char.
+        # On first-time setup the device waits for button press before ACKing;
+        # on subsequent connects with the same auth code it ACKs immediately.
         await asyncio.wait_for(
-            client.write_gatt_char(CHAR_UUID_AUTH, binascii.unhexlify(self.auth_code), response=False),
-            timeout=5.0
+            client.write_gatt_char(CHAR_UUID_AUTH, binascii.unhexlify(self.auth_code), response=True),
+            timeout=30.0
         )
 
     async def onboard(self, client: BleakClient):
@@ -270,9 +296,13 @@ class NespressoClient():
         self.state_response = data
 
     def generate_auth_key(self):
-        unique_id = uuid.uuid4()
-        hex_string = unique_id.hex
-        return hex_string[:16]
+        import hashlib
+        if self.address:
+            # Deterministic key from MAC so the same code is used across HA restarts.
+            # The machine stores the accepted auth code; random keys would never match.
+            mac_bytes = self.address.replace(':', '').encode()
+            return hashlib.md5(mac_bytes).hexdigest()[:16]
+        return uuid.uuid4().hex[:16]
 
     async def brew_predefined(self,
                               brew: BrewType = BrewType.RISTRETTO,
