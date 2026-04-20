@@ -94,22 +94,13 @@ class NespressoClient():
             for char in service.characteristics:
                 _LOGGER.debug(f'  [{service.uuid}] {char.uuid} ({",".join(char.properties)})')
 
-        # Attempt BLE OS-level pairing. pair() invalidates BlueZ's service cache
-        # on both success and failure, so always reconnect afterwards.
-        pair_ok = False
-        try:
-            await client.pair()
-            pair_ok = True
-            _LOGGER.debug(f'BLE pair() succeeded for {device.name}')
-        except Exception as e:
-            _LOGGER.warning(f'BLE pair() failed for {device.name}: {e} — reconnecting anyway')
-        await client.disconnect()
-        client = await establish_connection(BleakClient, device, device.address)
-        try:
-            await client.get_services()
-        except AttributeError:
-            pass
-        _LOGGER.debug(f'Reconnected after pair attempt for {device.name} (paired={pair_ok})')
+        # BLE OS-level pairing is required for sensor reads to succeed on the Vertuo
+        # line, but pair() fails with AuthenticationFailed unless the user has first
+        # pressed the Bluetooth pairing button on the machine. Attempting pair()
+        # without that gesture corrupts the connection. Pairing must be done manually:
+        #   1. Hold the Bluetooth button on the machine to enter pairing mode
+        #   2. Run: bluetoothctl pair D8:13:2A:11:12:1A  (or restart HA with the machine in pairing mode)
+        # Once bonded, this code will use the stored bond on reconnect automatically.
 
         # Application-level auth write — generate a code if we don't have one yet.
         # Never write CHAR_UUID_PAIR (06aa3a61): the Vertuo disconnects on that write.
