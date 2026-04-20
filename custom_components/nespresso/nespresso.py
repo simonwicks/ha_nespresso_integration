@@ -140,28 +140,42 @@ class NespressoClient():
         else:
             _LOGGER.debug("Skipping reconnect — pair succeeded, connection is encrypted")
 
-        # Application-level auth write. The auth characteristic uses Write Request
-        # (property='write') — the device ACKs once it accepts the code.
-        # On first-time pairing the 30s window may already be used; on subsequent
-        # connects the device recognises the stored code and ACKs immediately.
+        # Application-level auth write. Only attempted when BLE pairing succeeded
+        # (connection is encrypted). Without encryption the device never ACKs the
+        # Write Request and we'd hang for 30s pointlessly.
         # Never write CHAR_UUID_PAIR (06aa3a61): the Vertuo disconnects on that write.
-        if client.services.get_characteristic(CHAR_UUID_AUTH) is not None:
+        if pair_ok and client.services.get_characteristic(CHAR_UUID_AUTH) is not None:
             auth_char = client.services.get_characteristic(CHAR_UUID_AUTH)
             _LOGGER.debug("Auth characteristic properties: %s", auth_char.properties)
             if not self.auth_code:
                 self.auth_code = self.generate_auth_key()
-                _LOGGER.debug("Generated auth key for %s: %s", device.address, self.auth_code)
+            _LOGGER.debug("Using auth key for %s: %s", device.address, self.auth_code)
             try:
                 await self.auth(client)
                 _LOGGER.debug("Auth succeeded for %s", device.address)
             except Exception as e:
                 _LOGGER.warning("Auth write failed for %s: %s — proceeding without auth", device.address, e)
+                # Re-do service discovery: a 30s auth timeout drops the internal
+                # ATT connection, clearing bleak's services cache even when
+                # is_connected still returns True.
+                try:
+                    await client.get_services()
+                except Exception:
+                    pass
                 if not client.is_connected:
-                    client = await establish_connection(BleakClient, device, device.address)
+                    client = await asyncio.wait_for(
+                        establish_connection(BleakClient, device, device.address),
+                        timeout=20.0
+                    )
                     try:
                         await client.get_services()
                     except AttributeError:
                         pass
+        elif not pair_ok:
+            _LOGGER.debug(
+                "Skipping auth write for %s — BLE pair failed, connection is not "
+                "encrypted and auth write would hang", device.address
+            )
         else:
             _LOGGER.debug("No auth characteristic on %s — skipping auth", device.address)
 
