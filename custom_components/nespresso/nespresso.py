@@ -97,8 +97,9 @@ class NespressoClient():
                     char.handle, service.uuid, char.uuid, ','.join(char.properties)
                 )
 
-        # BLE pairing: required for sensor reads. BlueZ reuses a stored bond
-        # automatically on reconnect, so this only blocks on first-time setup.
+        # BLE pairing: required for sensor reads on the Vertuo line.
+        # When pair() succeeds the connection is ALREADY encrypted — keep it.
+        # When pair() fails, disconnect and reconnect so service discovery is clean.
         # On first setup, press the Bluetooth button on the machine within 30s
         # of seeing "Attempting BLE pair" in the HA log.
         pair_ok = False
@@ -109,7 +110,7 @@ class NespressoClient():
             )
             await asyncio.wait_for(client.pair(), timeout=30.0)
             pair_ok = True
-            _LOGGER.debug("BLE pair succeeded for %s", device.address)
+            _LOGGER.debug("BLE pair succeeded for %s — keeping encrypted connection", device.address)
         except asyncio.TimeoutError:
             _LOGGER.warning(
                 "BLE pair timed out for %s — if sensor reads fail, restart HA and "
@@ -117,17 +118,21 @@ class NespressoClient():
                 device.address
             )
         except Exception as e:
-            _LOGGER.warning("BLE pair failed for %s: %s — reconnecting", device.address, e)
+            _LOGGER.warning("BLE pair failed for %s: %s", device.address, e)
 
-        # Always reconnect after pair attempt: BlueZ needs a fresh connection
-        # to use the (possibly newly established) bond.
-        await client.disconnect()
-        client = await establish_connection(BleakClient, device, device.address)
-        try:
-            await client.get_services()
-        except AttributeError:
-            pass
-        _LOGGER.debug("Reconnected after pair attempt for %s (paired=%s)", device.address, pair_ok)
+        if not pair_ok:
+            # Reconnect only on failure: a failed pair can corrupt connection state /
+            # service discovery cache. On success the existing encrypted connection
+            # is used directly so we don't lose the established security context.
+            await client.disconnect()
+            client = await establish_connection(BleakClient, device, device.address)
+            try:
+                await client.get_services()
+            except AttributeError:
+                pass
+            _LOGGER.debug("Reconnected after failed pair for %s", device.address)
+        else:
+            _LOGGER.debug("Skipping reconnect — pair succeeded, connection is encrypted")
 
         # Application-level auth write. The auth characteristic uses Write Request
         # (property='write') — the device ACKs once it accepts the code.
