@@ -87,7 +87,8 @@ async def async_setup_entry(hass: HomeAssistant, config: ConfigEntry, async_add_
     """Set up the Nespresso sensor."""
     scan_interval = SCAN_INTERVAL
     mac = config.data.get(CONF_ADDRESS)
-    auth = config.data.get(CONF_TOKEN)
+    # Options flow stores updated values in config.options; fall back to config.data
+    auth = config.options.get(CONF_TOKEN) or config.data.get(CONF_TOKEN)
 
     _LOGGER.debug("Create the top level device..")
     device_registry = dr.async_get(hass)

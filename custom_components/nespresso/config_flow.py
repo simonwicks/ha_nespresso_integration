@@ -41,6 +41,12 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     VERSION = 1
 
+    @staticmethod
+    def async_get_options_flow(
+        config_entry: config_entries.ConfigEntry,
+    ) -> OptionsFlowHandler:
+        return OptionsFlowHandler(config_entry)
+
     async def async_step_bluetooth(
         self, discovery_info: BluetoothServiceInfo
     ) -> FlowResult:
@@ -150,6 +156,31 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 CONF_ADDRESS: device.address,
                 CONF_TOKEN: device.auth_code,
             },
+        )
+
+
+class OptionsFlowHandler(config_entries.OptionsFlow):
+    """Handle Nespresso options (allows updating the auth token)."""
+
+    def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
+        self._config_entry = config_entry
+
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        if user_input is not None:
+            return self.async_create_entry(title="", data=user_input)
+
+        return self.async_show_form(
+            step_id="init",
+            data_schema=vol.Schema(
+                {
+                    vol.Optional(
+                        CONF_TOKEN,
+                        default=self._config_entry.data.get(CONF_TOKEN, ""),
+                    ): cv.string,
+                }
+            ),
         )
 
 
