@@ -81,7 +81,10 @@ class NespressoClient():
                 return True
 
         _LOGGER.debug(f'Connecting to {device.name} ({device.address})')
-        client = await establish_connection(BleakClient, device, device.address)
+        client = await asyncio.wait_for(
+            establish_connection(BleakClient, device, device.address),
+            timeout=20.0
+        )
         _LOGGER.debug(f'Connected to {device.name}, triggering service discovery')
         try:
             await client.get_services()
@@ -125,7 +128,10 @@ class NespressoClient():
             # service discovery cache. On success the existing encrypted connection
             # is used directly so we don't lose the established security context.
             await client.disconnect()
-            client = await establish_connection(BleakClient, device, device.address)
+            client = await asyncio.wait_for(
+                establish_connection(BleakClient, device, device.address),
+                timeout=20.0
+            )
             try:
                 await client.get_services()
             except AttributeError:
